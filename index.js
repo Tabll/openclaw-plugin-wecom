@@ -12,6 +12,74 @@ import {
 const DEFAULT_ACCOUNT_ID = "default";
 
 // =============================================================================
+// Markdown Image Processing Constants and Helpers
+// =============================================================================
+
+// Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
+// Matches sandbox: URLs and absolute paths that look like file system paths
+const MARKDOWN_IMAGE_REGEX = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
+
+/**
+ * Convert sandbox: URL to absolute filesystem path
+ * @param {string} path - Original path (may have sandbox: prefix)
+ * @returns {string} Absolute filesystem path
+ */
+function convertToAbsolutePath(path) {
+  if (path.startsWith("sandbox:")) {
+    return path.replace(/^sandbox:\/{1,2}/, "");
+  }
+  return path;
+}
+
+/**
+ * Process markdown images in text and queue them for stream
+ * @param {string} text - Text containing markdown images
+ * @param {string} streamId - Target stream ID
+ * @param {string} context - Context for logging (e.g., "sendText", "deliverWecomReply")
+ * @returns {string} Processed text with placeholders
+ */
+function processMarkdownImages(text, streamId, context = "unknown") {
+  let processedText = text;
+  const imageMatches = [];
+  let match;
+  
+  // Find all markdown images
+  const regex = new RegExp(MARKDOWN_IMAGE_REGEX);
+  while ((match = regex.exec(text)) !== null) {
+    imageMatches.push({
+      fullMatch: match[0],
+      path: match[1],
+      index: match.index
+    });
+  }
+  
+  // Queue all images first
+  for (const img of imageMatches) {
+    const absolutePath = convertToAbsolutePath(img.path);
+    
+    logger.debug(`Queueing markdown image from ${context}`, {
+      streamId,
+      originalPath: img.path,
+      absolutePath
+    });
+    
+    // Queue the image for processing when stream finishes
+    streamManager.queueImage(streamId, absolutePath);
+  }
+  
+  // Replace all markdown images with placeholders in reverse order
+  // to preserve indices
+  for (let i = imageMatches.length - 1; i >= 0; i--) {
+    const img = imageMatches[i];
+    const before = processedText.substring(0, img.index);
+    const after = processedText.substring(img.index + img.fullMatch.length);
+    processedText = before + "\n[图片]\n" + after;
+  }
+  
+  return processedText;
+}
+
+// =============================================================================
 // 命令白名单配置
 // =============================================================================
 
@@ -242,51 +310,7 @@ const wecomChannelPlugin = {
         logger.debug("Appending outbound text to stream", { userId, streamId, text: text.substring(0, 30) });
         
         // Process markdown images: detect and queue them
-        // Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
-        // Matches sandbox: URLs and absolute paths that look like file system paths
-        const markdownImageRegex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
-        let processedText = text;
-        const imageMatches = [];
-        let match;
-        
-        // Find all markdown images
-        while ((match = markdownImageRegex.exec(text)) !== null) {
-          imageMatches.push({
-            fullMatch: match[0],
-            path: match[1],
-            index: match.index
-          });
-        }
-        
-        // Queue all images first
-        for (const img of imageMatches) {
-          // Convert sandbox: URLs to absolute paths
-          // Support both sandbox:/ and sandbox:// formats
-          let absolutePath = img.path;
-          if (absolutePath.startsWith("sandbox:")) {
-            absolutePath = absolutePath.replace(/^sandbox:\/{1,2}/, "");
-          }
-          // Paths starting with / are already absolute, no conversion needed
-          
-          logger.debug("Queueing markdown image from sendText", {
-            userId,
-            streamId,
-            originalPath: img.path,
-            absolutePath
-          });
-          
-          // Queue the image for processing when stream finishes
-          streamManager.queueImage(streamId, absolutePath);
-        }
-        
-        // Replace all markdown images with placeholders in reverse order
-        // to preserve indices
-        for (let i = imageMatches.length - 1; i >= 0; i--) {
-          const img = imageMatches[i];
-          const before = processedText.substring(0, img.index);
-          const after = processedText.substring(img.index + img.fullMatch.length);
-          processedText = before + "\n[图片]\n" + after;
-        }
+        const processedText = processMarkdownImages(text, streamId, "sendText");
         
         // 使用 appendStream 追加内容，保留之前的内容
         const stream = streamManager.getStream(streamId);
@@ -859,57 +883,11 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     return;
   }
 
-  // Process markdown images: detect and queue them
-  // Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
-  // Matches sandbox: URLs and absolute paths that look like file system paths
-  const markdownImageRegex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
-  let processedText = text;
-  const imageMatches = [];
-  let match;
-  
-  // Find all markdown images
-  while ((match = markdownImageRegex.exec(text)) !== null) {
-    imageMatches.push({
-      fullMatch: match[0],
-      path: match[1],
-      index: match.index
-    });
-  }
-  
-  // Process each detected image (only if we have a valid streamId)
+  // Process markdown images: detect and queue them (only if we have a valid streamId)
   const targetStreamId = streamId || activeStreams.get(senderId);
-  
-  if (targetStreamId && imageMatches.length > 0) {
-    // Queue all images first
-    for (const img of imageMatches) {
-      // Convert sandbox: URLs to absolute paths
-      // Support both sandbox:/ and sandbox:// formats
-      let absolutePath = img.path;
-      if (absolutePath.startsWith("sandbox:")) {
-        absolutePath = absolutePath.replace(/^sandbox:\/{1,2}/, "");
-      }
-      // Paths starting with / are already absolute, no conversion needed
-      
-      logger.debug("Queueing markdown image from deliverWecomReply", {
-        senderId,
-        streamId: targetStreamId,
-        originalPath: img.path,
-        absolutePath
-      });
-      
-      // Queue the image for processing when stream finishes
-      streamManager.queueImage(targetStreamId, absolutePath);
-    }
-    
-    // Replace all markdown images with placeholders in reverse order
-    // to preserve indices
-    for (let i = imageMatches.length - 1; i >= 0; i--) {
-      const img = imageMatches[i];
-      const before = processedText.substring(0, img.index);
-      const after = processedText.substring(img.index + img.fullMatch.length);
-      processedText = before + "\n[图片]\n" + after;
-    }
-  }
+  const processedText = targetStreamId 
+    ? processMarkdownImages(text, targetStreamId, "deliverWecomReply")
+    : text;
 
   // 辅助函数：追加内容到流（带去重）
   const appendToStream = (targetStreamId, content) => {

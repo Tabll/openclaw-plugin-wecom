@@ -240,10 +240,52 @@ const wecomChannelPlugin = {
 
       if (streamId && streamManager.hasStream(streamId)) {
         logger.debug("Appending outbound text to stream", { userId, streamId, text: text.substring(0, 30) });
+        
+        // Process markdown images: detect and queue them
+        // Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
+        // Matches sandbox: URLs and absolute paths that look like file system paths
+        const markdownImageRegex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
+        let processedText = text;
+        const imageMatches = [];
+        let match;
+        
+        // Find all markdown images
+        while ((match = markdownImageRegex.exec(text)) !== null) {
+          imageMatches.push({
+            fullMatch: match[0],
+            path: match[1]
+          });
+        }
+        
+        // Process each detected image
+        for (const img of imageMatches) {
+          // Convert sandbox: URLs to absolute paths
+          // Support both sandbox:/ and sandbox:// formats
+          let absolutePath = img.path;
+          if (absolutePath.startsWith("sandbox:")) {
+            absolutePath = absolutePath.replace(/^sandbox:\/{1,2}/, "");
+          }
+          // Paths starting with / are already absolute, no conversion needed
+          
+          logger.debug("Queueing markdown image from sendText", {
+            userId,
+            streamId,
+            originalPath: img.path,
+            absolutePath
+          });
+          
+          // Queue the image for processing when stream finishes
+          streamManager.queueImage(streamId, absolutePath);
+          
+          // Replace markdown syntax with placeholder
+          // Each fullMatch is unique, so replace will work correctly
+          processedText = processedText.replace(img.fullMatch, "\n[图片]\n");
+        }
+        
         // 使用 appendStream 追加内容，保留之前的内容
         const stream = streamManager.getStream(streamId);
         const separator = stream && stream.content.length > 0 ? "\n\n" : "";
-        streamManager.appendStream(streamId, separator + text);
+        streamManager.appendStream(streamId, separator + processedText);
 
         return {
           channel: "wecom",

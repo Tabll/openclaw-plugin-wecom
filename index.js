@@ -15,8 +15,16 @@ const DEFAULT_ACCOUNT_ID = "default";
 // Markdown Image Processing Constants and Helpers
 // =============================================================================
 
-// Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
-// Matches sandbox: URLs and absolute paths that look like file system paths
+/**
+ * Regex pattern to match markdown images with sandbox: URLs or absolute paths.
+ * This constant serves as documentation for the pattern used in processMarkdownImages().
+ * Note: A fresh regex instance is created in the function to avoid shared state from the global flag.
+ * 
+ * Matches:
+ * - ![alt](sandbox:/path/to/image.jpg)
+ * - ![alt](/home/user/image.png)
+ * - ![alt](/tmp/screenshot.png)
+ */
 const MARKDOWN_IMAGE_REGEX = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
 
 /**
@@ -69,7 +77,8 @@ function processMarkdownImages(text, streamId, context = "unknown") {
   }
   
   // Replace all markdown images with placeholders in reverse order
-  // to preserve indices
+  // to preserve indices. String concatenation is used for simplicity;
+  // for typical use cases (1-3 images), performance is acceptable.
   for (let i = imageMatches.length - 1; i >= 0; i--) {
     const img = imageMatches[i];
     const before = processedText.substring(0, img.index);

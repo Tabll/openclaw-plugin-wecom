@@ -19,10 +19,25 @@ const DEFAULT_ACCOUNT_ID = "default";
  * Convert sandbox: URL to absolute filesystem path
  * @param {string} path - Original path (may have sandbox: prefix)
  * @returns {string} Absolute filesystem path
+ * 
+ * Examples:
+ * - sandbox:/home/user/file.jpg → /home/user/file.jpg
+ * - sandbox://home/user/file.jpg → /home/user/file.jpg
+ * - /home/user/file.jpg → /home/user/file.jpg
  */
 function convertToAbsolutePath(path) {
   if (path.startsWith("sandbox:")) {
-    return path.replace(/^sandbox:\/{1,2}/, "");
+    // Remove 'sandbox:' prefix and ensure path starts with /
+    const withoutPrefix = path.replace(/^sandbox:/, "");
+    // Handle both sandbox:/ and sandbox:// formats
+    if (withoutPrefix.startsWith("//")) {
+      return withoutPrefix.substring(1); // sandbox://path → /path
+    } else if (withoutPrefix.startsWith("/")) {
+      return withoutPrefix; // sandbox:/path → /path
+    } else {
+      // sandbox:path (no slashes) - prepend /
+      return "/" + withoutPrefix;
+    }
   }
   return path;
 }

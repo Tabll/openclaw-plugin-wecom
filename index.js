@@ -44,7 +44,8 @@ function processMarkdownImages(text, streamId, context = "unknown") {
   let match;
   
   // Find all markdown images
-  const regex = new RegExp(MARKDOWN_IMAGE_REGEX);
+  // Create a new regex instance to avoid shared state from global flag
+  const regex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
   while ((match = regex.exec(text)) !== null) {
     imageMatches.push({
       fullMatch: match[0],
@@ -883,12 +884,6 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     return;
   }
 
-  // Process markdown images: detect and queue them (only if we have a valid streamId)
-  const targetStreamId = streamId || activeStreams.get(senderId);
-  const processedText = targetStreamId 
-    ? processMarkdownImages(text, targetStreamId, "deliverWecomReply")
-    : text;
-
   // 辅助函数：追加内容到流（带去重）
   const appendToStream = (targetStreamId, content) => {
     const stream = streamManager.getStream(targetStreamId);
@@ -908,29 +903,20 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     return true;
   };
 
-  if (!streamId) {
-    // 尝试从 activeStreams 获取
-    const activeStreamId = activeStreams.get(senderId);
-    if (activeStreamId && streamManager.hasStream(activeStreamId)) {
-      appendToStream(activeStreamId, processedText);
-      logger.debug("WeCom stream appended (via activeStreams)", {
-        streamId: activeStreamId,
-        contentLength: processedText.length,
-      });
-      return;
-    }
-    logger.warn("WeCom: no active stream for this message", { senderId });
+  // Determine target stream ID
+  const targetStreamId = streamId || activeStreams.get(senderId);
+  
+  if (!targetStreamId || !streamManager.hasStream(targetStreamId)) {
+    logger.warn("WeCom: no active stream for this message", { senderId, streamId });
     return;
   }
 
-  if (!streamManager.hasStream(streamId)) {
-    logger.warn("WeCom: stream not found, cannot update", { streamId });
-    return;
-  }
+  // Process markdown images: detect and queue them (only after validating stream exists)
+  const processedText = processMarkdownImages(text, targetStreamId, "deliverWecomReply");
 
-  appendToStream(streamId, processedText);
+  appendToStream(targetStreamId, processedText);
   logger.debug("WeCom stream appended", {
-    streamId,
+    streamId: targetStreamId,
     contentLength: processedText.length,
     to: senderId
   });

@@ -242,8 +242,9 @@ const wecomChannelPlugin = {
         logger.debug("Appending outbound text to stream", { userId, streamId, text: text.substring(0, 30) });
         
         // Process markdown images: detect and queue them
-        // Regex pattern to match ![...](sandbox:...) or ![...](/...)
-        const markdownImageRegex = /!\[.*?\]\(((?:sandbox:|\/)[^)]+)\)/g;
+        // Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
+        // Matches sandbox: URLs and absolute paths that look like file system paths
+        const markdownImageRegex = /!\[.*?\]\((sandbox:[^\)]+|\/(?:home|tmp|var|usr|opt|root)\/[^\)]+)\)/g;
         let processedText = text;
         const imageMatches = [];
         let match;
@@ -260,9 +261,13 @@ const wecomChannelPlugin = {
         for (const img of imageMatches) {
           // Convert sandbox: URLs to absolute paths
           // Support both sandbox:/ and sandbox:// formats
-          const absolutePath = img.path
-            .replace(/^sandbox:\/\//, "")
-            .replace(/^sandbox:\//, "");
+          let absolutePath = img.path;
+          if (absolutePath.startsWith("sandbox:")) {
+            absolutePath = absolutePath
+              .replace(/^sandbox:\/\//, "")
+              .replace(/^sandbox:\//, "");
+          }
+          // Paths starting with / are already absolute, no conversion needed
           
           logger.debug("Queueing markdown image from sendText", {
             userId,

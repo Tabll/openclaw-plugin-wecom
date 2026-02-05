@@ -361,10 +361,7 @@ const wecomChannelPlugin = {
 
         if (isLocalPath) {
           // Convert sandbox: URLs to absolute paths
-          // Support both sandbox:/ and sandbox:// formats
-          const absolutePath = mediaUrl
-            .replace(/^sandbox:\/\//, "")
-            .replace(/^sandbox:\//, "");
+          const absolutePath = convertToAbsolutePath(mediaUrl);
 
           logger.debug("Queueing local image for stream", {
             userId,

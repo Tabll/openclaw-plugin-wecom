@@ -810,7 +810,7 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
   // 1. 独立的 MEDIA: 行：MEDIA:/path/to/image.png
   // 2. Markdown 图片语法：![alt text](MEDIA:/path/to/image.png)
   const mediaRegex = /^MEDIA:\s*(.+)$/gm;
-  const markdownImageRegex = /!\[([^\]]*)\]\(MEDIA:([^)]+)\)/g;
+  const markdownImageRegex = /!\[([^\]]*)\]\(MEDIA:\s*([^)]+?)\)/g;
   const mediaMatches = [];
   let match;
   
@@ -840,7 +840,7 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
       mediaMatches.push({
         fullMatch: match[0],
         path: mediaPath,
-        altText: altText
+        altText
       });
       logger.debug("Detected markdown image with MEDIA path", {
         streamId,

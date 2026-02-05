@@ -12,20 +12,8 @@ import {
 const DEFAULT_ACCOUNT_ID = "default";
 
 // =============================================================================
-// Markdown Image Processing Constants and Helpers
+// Markdown Image Processing Helpers
 // =============================================================================
-
-/**
- * Regex pattern to match markdown images with sandbox: URLs or absolute paths.
- * This constant serves as documentation for the pattern used in processMarkdownImages().
- * Note: A fresh regex instance is created in the function to avoid shared state from the global flag.
- * 
- * Matches:
- * - ![alt](sandbox:/path/to/image.jpg)
- * - ![alt](/home/user/image.png)
- * - ![alt](/tmp/screenshot.png)
- */
-const MARKDOWN_IMAGE_REGEX = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
 
 /**
  * Convert sandbox: URL to absolute filesystem path
@@ -41,6 +29,12 @@ function convertToAbsolutePath(path) {
 
 /**
  * Process markdown images in text and queue them for stream
+ * 
+ * Detects markdown images with the pattern:
+ * - ![alt](sandbox:/path/to/image.jpg)
+ * - ![alt](/home/user/image.png)
+ * - ![alt](/tmp/screenshot.png)
+ * 
  * @param {string} text - Text containing markdown images
  * @param {string} streamId - Target stream ID
  * @param {string} context - Context for logging (e.g., "sendText", "deliverWecomReply")
@@ -52,7 +46,7 @@ function processMarkdownImages(text, streamId, context = "unknown") {
   let match;
   
   // Find all markdown images
-  // Create a new regex instance to avoid shared state from global flag
+  // Create a new regex instance each time to avoid shared state from global flag
   const regex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
   while ((match = regex.exec(text)) !== null) {
     imageMatches.push({

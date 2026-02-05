@@ -806,9 +806,15 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
   });
 
   // 处理绝对路径的 MEDIA: 行（OpenClaw 会拒绝它们，所以我们需要手动处理）
+  // 支持两种格式：
+  // 1. 独立的 MEDIA: 行：MEDIA:/path/to/image.png
+  // 2. Markdown 图片语法：![alt text](MEDIA:/path/to/image.png)
   const mediaRegex = /^MEDIA:\s*(.+)$/gm;
+  const markdownImageRegex = /!\[([^\]]*)\]\(MEDIA:([^)]+)\)/g;
   const mediaMatches = [];
   let match;
+  
+  // 检测独立的 MEDIA: 行
   while ((match = mediaRegex.exec(text)) !== null) {
     const mediaPath = match[1].trim();
     // 检查是否是绝对路径（以 / 开头）
@@ -824,6 +830,26 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
       });
     }
   }
+  
+  // 检测 Markdown 图片语法
+  while ((match = markdownImageRegex.exec(text)) !== null) {
+    const altText = match[1];
+    const mediaPath = match[2].trim();
+    // 检查是否是绝对路径（以 / 开头）
+    if (mediaPath.startsWith("/")) {
+      mediaMatches.push({
+        fullMatch: match[0],
+        path: mediaPath,
+        altText: altText
+      });
+      logger.debug("Detected markdown image with MEDIA path", {
+        streamId,
+        mediaPath,
+        altText,
+        fullMatch: match[0]
+      });
+    }
+  }
 
   // 如果检测到绝对路径的 MEDIA 行，将图片加入队列并从文本中移除
   let processedText = text;
@@ -835,7 +861,9 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
         processedText = processedText.replace(media.fullMatch, "").trim();
         logger.info("Queued absolute path image for stream", {
           streamId,
-          imagePath: media.path
+          imagePath: media.path,
+          altText: media.altText || "(none)",
+          format: media.altText ? "markdown" : "standalone"
         });
       }
     }

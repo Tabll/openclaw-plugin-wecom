@@ -253,11 +253,12 @@ const wecomChannelPlugin = {
         while ((match = markdownImageRegex.exec(text)) !== null) {
           imageMatches.push({
             fullMatch: match[0],
-            path: match[1]
+            path: match[1],
+            index: match.index
           });
         }
         
-        // Process each detected image
+        // Queue all images first
         for (const img of imageMatches) {
           // Convert sandbox: URLs to absolute paths
           // Support both sandbox:/ and sandbox:// formats
@@ -276,10 +277,15 @@ const wecomChannelPlugin = {
           
           // Queue the image for processing when stream finishes
           streamManager.queueImage(streamId, absolutePath);
-          
-          // Replace markdown syntax with placeholder
-          // Each fullMatch is unique, so replace will work correctly
-          processedText = processedText.replace(img.fullMatch, "\n[图片]\n");
+        }
+        
+        // Replace all markdown images with placeholders in reverse order
+        // to preserve indices
+        for (let i = imageMatches.length - 1; i >= 0; i--) {
+          const img = imageMatches[i];
+          const before = processedText.substring(0, img.index);
+          const after = processedText.substring(img.index + img.fullMatch.length);
+          processedText = before + "\n[图片]\n" + after;
         }
         
         // 使用 appendStream 追加内容，保留之前的内容
@@ -865,7 +871,8 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
   while ((match = markdownImageRegex.exec(text)) !== null) {
     imageMatches.push({
       fullMatch: match[0],
-      path: match[1]
+      path: match[1],
+      index: match.index
     });
   }
   
@@ -873,6 +880,7 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
   const targetStreamId = streamId || activeStreams.get(senderId);
   
   if (targetStreamId && imageMatches.length > 0) {
+    // Queue all images first
     for (const img of imageMatches) {
       // Convert sandbox: URLs to absolute paths
       // Support both sandbox:/ and sandbox:// formats
@@ -891,10 +899,15 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
       
       // Queue the image for processing when stream finishes
       streamManager.queueImage(targetStreamId, absolutePath);
-      
-      // Replace markdown syntax with placeholder
-      // Each fullMatch is unique, so replace will work correctly
-      processedText = processedText.replace(img.fullMatch, "\n[图片]\n");
+    }
+    
+    // Replace all markdown images with placeholders in reverse order
+    // to preserve indices
+    for (let i = imageMatches.length - 1; i >= 0; i--) {
+      const img = imageMatches[i];
+      const before = processedText.substring(0, img.index);
+      const after = processedText.substring(img.index + img.fullMatch.length);
+      processedText = before + "\n[图片]\n" + after;
     }
   }
 

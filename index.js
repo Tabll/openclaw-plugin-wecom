@@ -853,6 +853,51 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     return;
   }
 
+  // Process markdown images: detect and queue them
+  // Regex pattern to match ![...](sandbox:...) or ![...](<absolute-path>)
+  // Matches sandbox: URLs and absolute paths that look like file system paths
+  const markdownImageRegex = /!\[.*?\]\((sandbox:[^)]+|\/(?:home|tmp|var|usr|opt|root)\/[^)]+)\)/g;
+  let processedText = text;
+  const imageMatches = [];
+  let match;
+  
+  // Find all markdown images
+  while ((match = markdownImageRegex.exec(text)) !== null) {
+    imageMatches.push({
+      fullMatch: match[0],
+      path: match[1]
+    });
+  }
+  
+  // Process each detected image (only if we have a valid streamId)
+  const targetStreamId = streamId || activeStreams.get(senderId);
+  
+  if (targetStreamId && imageMatches.length > 0) {
+    for (const img of imageMatches) {
+      // Convert sandbox: URLs to absolute paths
+      // Support both sandbox:/ and sandbox:// formats
+      let absolutePath = img.path;
+      if (absolutePath.startsWith("sandbox:")) {
+        absolutePath = absolutePath.replace(/^sandbox:\/{1,2}/, "");
+      }
+      // Paths starting with / are already absolute, no conversion needed
+      
+      logger.debug("Queueing markdown image from deliverWecomReply", {
+        senderId,
+        streamId: targetStreamId,
+        originalPath: img.path,
+        absolutePath
+      });
+      
+      // Queue the image for processing when stream finishes
+      streamManager.queueImage(targetStreamId, absolutePath);
+      
+      // Replace markdown syntax with placeholder
+      // Each fullMatch is unique, so replace will work correctly
+      processedText = processedText.replace(img.fullMatch, "\n[图片]\n");
+    }
+  }
+
   // 辅助函数：追加内容到流（带去重）
   const appendToStream = (targetStreamId, content) => {
     const stream = streamManager.getStream(targetStreamId);
@@ -876,10 +921,10 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     // 尝试从 activeStreams 获取
     const activeStreamId = activeStreams.get(senderId);
     if (activeStreamId && streamManager.hasStream(activeStreamId)) {
-      appendToStream(activeStreamId, text);
+      appendToStream(activeStreamId, processedText);
       logger.debug("WeCom stream appended (via activeStreams)", {
         streamId: activeStreamId,
-        contentLength: text.length,
+        contentLength: processedText.length,
       });
       return;
     }
@@ -892,10 +937,10 @@ async function deliverWecomReply({ payload, account, responseUrl, senderId, stre
     return;
   }
 
-  appendToStream(streamId, text);
+  appendToStream(streamId, processedText);
   logger.debug("WeCom stream appended", {
     streamId,
-    contentLength: text.length,
+    contentLength: processedText.length,
     to: senderId
   });
 }

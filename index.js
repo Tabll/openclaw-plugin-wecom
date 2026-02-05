@@ -240,10 +240,48 @@ const wecomChannelPlugin = {
 
       if (streamId && streamManager.hasStream(streamId)) {
         logger.debug("Appending outbound text to stream", { userId, streamId, text: text.substring(0, 30) });
+        
+        // Process markdown images: detect and queue them
+        // Regex pattern to match ![...](sandbox:...) or ![...](/...)
+        const markdownImageRegex = /!\[.*?\]\(((?:sandbox:|\/)[^)]+)\)/g;
+        let processedText = text;
+        const imageMatches = [];
+        let match;
+        
+        // Find all markdown images
+        while ((match = markdownImageRegex.exec(text)) !== null) {
+          imageMatches.push({
+            fullMatch: match[0],
+            path: match[1]
+          });
+        }
+        
+        // Process each detected image
+        for (const img of imageMatches) {
+          // Convert sandbox: URLs to absolute paths
+          // Support both sandbox:/ and sandbox:// formats
+          const absolutePath = img.path
+            .replace(/^sandbox:\/\//, "")
+            .replace(/^sandbox:\//, "");
+          
+          logger.debug("Queueing markdown image from sendText", {
+            userId,
+            streamId,
+            originalPath: img.path,
+            absolutePath
+          });
+          
+          // Queue the image for processing when stream finishes
+          streamManager.queueImage(streamId, absolutePath);
+          
+          // Replace markdown syntax with placeholder
+          processedText = processedText.replace(img.fullMatch, "\n[图片]\n");
+        }
+        
         // 使用 appendStream 追加内容，保留之前的内容
         const stream = streamManager.getStream(streamId);
         const separator = stream && stream.content.length > 0 ? "\n\n" : "";
-        streamManager.appendStream(streamId, separator + text);
+        streamManager.appendStream(streamId, separator + processedText);
 
         return {
           channel: "wecom",

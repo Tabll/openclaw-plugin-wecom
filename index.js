@@ -70,9 +70,10 @@ function processMarkdownImages(text, streamId, context = "unknown") {
     streamManager.queueImage(streamId, absolutePath);
   }
   
-  // Replace all markdown images with placeholders in reverse order
-  // to preserve indices. String concatenation is used for simplicity;
-  // for typical use cases (1-3 images), performance is acceptable.
+  // Replace all markdown images with placeholders in reverse order.
+  // Reverse iteration preserves indices: replacing later substrings first
+  // ensures earlier indices remain valid. String concatenation is used
+  // for simplicity; performance is acceptable for typical use (1-3 images).
   for (let i = imageMatches.length - 1; i >= 0; i--) {
     const img = imageMatches[i];
     const before = processedText.substring(0, img.index);
